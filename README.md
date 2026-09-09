@@ -3,7 +3,6 @@ homeostasis-spatial-bus/
 ├── config/
 │   └── spatial_bounds.toml         # [핵심] 최대 유저수(1000만), 맵 크기, 틱레이트 하드 가드레일
 ├── core_formula/
-│   ├── __init__.py
 │   ├── space_morph.py              # 3D 구면 좌표 -> 닫힌 토러스 공간 위상 천이 대수학 엔진
 │   └── csg_detector.py             # 공분산 행렬식(Det->0) 기반 매크로/어뷰징 좌표 동기화 저격 엔진
 ├── target_kernel_xdp/
