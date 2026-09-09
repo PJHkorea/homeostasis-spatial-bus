@@ -10,30 +10,43 @@
  * 시간 축 유체 점성 감쇄 공식(Viscosity Damping)을 기계어 레벨에서 직접 집행합니다.
  */
 
+/*
+ * Homeostasis Spatial Bus - High-Performance Gaming Infrastructure
+ * File: target_hardware_cuda/spatial_viscosity.cu (1부 고도화 본)
+ *
+ * [수리물리학적 철학 - 하드웨어 가속 고도화 본]
+ * 상위 제어 평면의 64비트 정렬 규격과 1:1 대칭 정렬을 강제하여 FFI 주소선 밀림 버그를 박멸하고,
+ * NVIDIA GPU의 float4/int4 벡터화 로드를 수호하기 위해 64바이트 물리 경계로 정적 슬롯을 동결합니다.
+ */
+
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-/* [★ 하드웨어 ABI 정렬 스펙 완벽 수호: spatial_maps.h와 1:1 싱크] */
+/* [★ 하드웨어 ABI 정렬 스펙 완벽 수호: 상위 대수학 엔진 및 가속기 레일 단동 싱크] */
 #define ALIGNED_STRIDE 129           // 32개 공유 메모리 뱅크 충돌(Bank Conflict) 0% 제어용 홀수 패딩 스트라이드
 #define VISCOSITY_ALPHA 0.85f        // 정상 유저 순간 버스트 완충용 점성 감쇄 계수
 #define Q_SCALE_RECIPROCAL 0.0000152587890625f // Q16.16 고정소수점을 부동소수점으로 광속 복원하기 위한 역수 (1/65536)
 
-struct player_spatial_payload {
-    unsigned int x_fixed;
-    unsigned int y_fixed;
-    unsigned int z_fixed;
-    unsigned int pitch_fixed;
-    unsigned int yaw_fixed;
-    unsigned int roll_fixed;
-    unsigned int player_id;
-    unsigned int action_bitmap;
+struct __align__(64) player_spatial_payload {
+    /* [고도화 핵심] 64바이트 캐시라인 물리 경계 격리 배정 및 오프셋 정렬 무결성 사수 */
+    unsigned int x_fixed;            // 4 Bytes (오프셋 0)
+    unsigned int y_fixed;            // 4 Bytes (오프셋 4)
+    unsigned int z_fixed;            // 4 Bytes (오프셋 8)
+    unsigned int pitch_fixed;        // 4 Bytes (오프셋 12)
+    unsigned int yaw_fixed;          // 4 Bytes (오프셋 16)
+    unsigned int roll_fixed;         // 4 Bytes (오프셋 20)
+    unsigned int action_bitmap;      // 4 Bytes (오프셋 24)
+    unsigned int _pad_align;         // 4 Bytes (오프셋 28) -> 여기까지 32바이트 하드웨어 가드레일
+    unsigned long long player_id;    // 8 Bytes (오프셋 32) -> [★ 버그 픽스] uint64_t 승격으로 Rust/Python FFI 주소 직결
+    unsigned char _global_pad[24];   // 24 Bytes (오프셋 40) -> 정확히 64바이트 대칭형 실리콘 슬롯 동결
 };
 
-struct player_session_slot {
-    unsigned long long expiry_tick;
-    unsigned int gate_mask;
-    unsigned int action_flags;
-    unsigned char _padding[16];
+struct __align__(64) player_session_slot {
+    /* [고도화 핵심] 세션 정보 조회를 위한 구조체 역시 64바이트 하드웨어 물리 정렬 강제 */
+    unsigned long long expiry_tick;  // 8 Bytes (오프셋 0)
+    unsigned int gate_mask;          // 4 Bytes (오프셋 8)
+    unsigned int action_flags;       // 4 Bytes (오프셋 12)
+    unsigned char _padding[48];      // 48 Bytes (오프셋 16) -> 정확히 64바이트 락프리 슬롯 동결
 };
 
 /**
@@ -55,9 +68,10 @@ __global__ void compute_spatial_viscosity_kernel(
     // 무분기 가드레일: 할당 슬롯 범위를 초과하는 스레드는 조건문 분기 대신 즉시 리턴 차단
     if (idx >= total_users) return;
 
-    // ------------------ [★ 1-Cycle __ldg() 벡터화 하드웨어 로드] ------------------
+
+       // ------------------ [★ 1-Cycle __ldg() 벡터화 하드웨어 로드] ------------------
     // 일반 로드 명령어 대신 __ldg() 전용 Read-Only 캐시 경로를 하이재킹하여 
-    // 메모리 대역폭을 소모하지 않고 32바이트 하드웨어 캐시라인 물리 경계를 단 1사이클 만에 통과합니다.
+    // 메모리 대역폭을 소모하지 않고 64바이트 하드웨어 캐시라인 물리 경계를 최적화된 사이클 만에 통과합니다.
     unsigned int r_x      = __ldg(&(grid_matrix[idx].x_fixed));
     unsigned int r_y      = __ldg(&(grid_matrix[idx].y_fixed));
     unsigned int r_z      = __ldg(&(grid_matrix[idx].z_fixed));
@@ -80,17 +94,21 @@ __global__ void compute_spatial_viscosity_kernel(
     // Fused Multiply-Add (FMA) 가속 유도: 기계어 레벨에서 단 1클록 만에 전개
     float final_damped_signal = (VISCOSITY_ALPHA * prev_damped) + ((1.0f - VISCOSITY_ALPHA) * current_signal);
 
-    // ------------------ [0-Copy 가속기 공유 메모리 백라이팅] ------------------
+    // ------------------ [0-Copy 가속기 공유 메모리 백라이팅 및 무분기 마스킹] ------------------
     // Triton/대수학 엔진이 원타임에 가로챌 수 있도록 4차원 연산 레일 구조로 다이렉트 라이팅(Direct Write-back)
     damped_signals[output_offset + 0] = x_pos;
     damped_signals[output_offset + 1] = y_pos;
     damped_signals[output_offset + 2] = (float)r_bitmap;
     
-    // 만약 gate_mask가 활성화(0xFFFFFFFF)되어 매크로로 진압된 노드라면 
-    // 시그널 점수를 강제로 발산(MAX_POTENTIAL)시켜 다음 필터에서 확정 소산되도록 인터록 연동
-    unsigned int hardware_mask = -((int)g_mask);
-    float mask_multiplier = (hardware_mask == 0) ? 1.0f : 10000.0f;
+    // [고도화 포인트 - Warp Divergence 원천 거세]
+    // 기존의 삼항 연산 조건 분기식을 대수학적 정수 비트 연산으로 완전 평탄화(Branchless Equation).
+    // 정상 상태: g_mask == 0 -> is_macro == 0.0f -> mask_multiplier = 1.0f + 0.0f = 1.0f
+    // 차단 상태: g_mask == 1 -> is_macro == 1.0f -> mask_multiplier = 1.0f + 9999.0f = 10000.0f
+    // 비트 AND 연산(& 1)을 통해 하위 1비트만 정밀 래치하여 상위 영역 오염 리스크를 원천 분쇄합니다.
+    float is_macro = (float)(g_mask & 1);
+    float mask_multiplier = 1.0f + (is_macro * 9999.0f);
     
+    // 1-Cycle FMA 명령어로 자동 융합 컴파일 유도
     damped_signals[output_offset + 3] = final_damped_signal * mask_multiplier;
 }
 
@@ -114,3 +132,4 @@ extern "C" {
         );
     }
 }
+
