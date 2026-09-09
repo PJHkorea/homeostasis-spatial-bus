@@ -21,10 +21,8 @@ homeostasis-spatial-bus/
 │   │   ├── atomic_swapper.rs       # [트랙2] 유저 액션/스킬 입력 시 0ns 락프리 원자적 포인터 스왑
 │   │   └── ring_buffer_monitor.rs  # 커널-GPU 간 0-Copy 순환 버퍼 텔레메트리 모니터링 데몬
 ├── telemetry/
-│   ├── __init__.py
 │   └── nvhw_power_monitor.py      # 비침습식 모니터링: PCIe 대역폭 진동 및 GPU 전력 파형 역공학 관제
 ├── tests/
-│   ├── __init__.py
 │   ├── mock_packet_injector.py     # 100Gbps급 가상 유저 10만 명 틱 데이터 생성기
 │   └── simulation_burst.py         # 실측 검증: 10만 명 난사 시 메모리 추가 할당 진폭 0B 증명 스크립트
 ├── Dockerfile                      # NVIDIA CUDA 툴킷 및 커널 헤더 파편화 방지 격리 빌드 환경
