@@ -1,0 +1,75 @@
+# -*- coding: utf-8 -*-
+"""
+Homeostasis Spatial Bus - High-Performance Triton Kernel
+File: target_hardware_cuda/spatial_filter.triton
+
+[수리물리학적 철학]
+10만 명의 유저가 뿜어내는 3D 공간 궤적 텐서를 받아 주변 중계 대상(브로드캐스트 비트맵)을 
+선별할 때, if (거리 < 임계치) 같은 분기문을 사용하면 워프 분기 분산(Warp Divergence)으로 인해 
+GPU 병렬 연산 효율이 박멸됩니다.
+본 Triton 커널은 슈뢰딩거 터널링 장벽 공식과 1-Cycle FMA(Fused Multiply-Add) 레일을 결합하여,
+조건문 단 한 줄 없이 기계어 레벨에서 주변 중계 비트맵(gate_mask)을 전광석화처럼 전개합니다.
+"""
+
+import triton
+import triton.language as tl
+
+@triton.jit
+def spatial_filter_kernel(
+    damped_signals_ptr,      # x_pos, y_pos, action_bitmap, damped_signal (N x 4 텐서)
+    broadcast_bitmap_ptr,   # 최종 출력될 중계 대상 비트맵 (N x N 매트릭스 레일)
+    total_users,            # 총 활성 유저 수 (N)
+    spatial_radius_sq,      # 중계 범위 임계값의 제곱 (예: 50m^2 = 2500.0f)
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr
+):
+    # 하드웨어 블록 2차원 축 매핑 (M축: 소스 유저, N축: 타겟 유저)
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    # 텐서 슬롯 오프셋 계산 (Warp 레지스터 정렬)
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    # 바운더리 마스크 제어 (메모리 침범 및 분기 Jitter 차단 가드레일)
+    mask_m = offs_m < total_users
+    mask_n = offs_n < total_users
+    
+    # ------------------ [★ 0ns 무복사 글로벌 텐서판 로드] ------------------
+    # M축(나)의 XYZ 및 시그널 데이터 로드
+    x_m = tl.load(damped_signals_ptr + offs_m[:, None] * 4 + 0, mask=mask_m[:, None], other=0.0)
+    y_m = tl.load(damped_signals_ptr + offs_m[:, None] * 4 + 1, mask=mask_m[:, None], other=0.0)
+    sig_m = tl.load(damped_signals_ptr + offs_m[:, None] * 4 + 3, mask=mask_m[:, None], other=0.0)
+    
+    # N축(상대방)의 XYZ 데이터 로드
+    x_n = tl.load(damped_signals_ptr + offs_n[None, :] * 4 + 0, mask=mask_n[None, :], other=0.0)
+    y_n = tl.load(damped_signals_ptr + offs_n[None, :] * 4 + 1, mask=mask_n[None, :], other=0.0)
+    
+    # ------------------ [무분기 대수학적 3D 거리/장벽 연산] ------------------
+    # 유클리드 공간 거리 제곱 계산 (FMA 하드웨어 레일 최적화 일렬 전개)
+    dx = x_m - x_n
+    dy = y_m - y_n
+    distance_sq = dx * dx + dy * dy
+    
+    # 슈뢰딩거 포텐셜 장벽 압착 공식 적용: 내 시그널(sig_m)이 매크로 감지로 인해 폭발해 있다면 
+    # 상대방과의 거리에 무관하게 포텐셜 에너지를 강제로 무한대로 치솟게 만듭니다.
+    potential_barrier = (distance_sq - spatial_radius_sq) + sig_m
+    
+    # GPU 레지스터 하드웨어 클리핑 클램프 (0.0 미만 음수 발산 방지)
+    safe_potential = tl.maximum(potential_barrier, 0.0)
+    
+    # 양자 터널링 투과율 공식 (T = exp(-2 * sqrt(V))) 기계어 에뮬레이션
+    # 정상 범위 내 유저: safe_potential -> 0.0 이므로 T -> 1.0 (중계 대상 포함)
+    # 범위를 벗어났거나 매크로 유저: safe_potential 폭발로 T -> 0.0 (중계 대상 제외)
+    transmission_coeff = tl.exp(-2.0 * tl.sqrt(safe_potential))
+    
+    # ------------------ [실리콘 레벨 융합 게이팅 비트맵 전개] ------------------
+    # 조건문(if) 없이 투과율 점수가 0.5 이상인 정상 인접 유저들만 비트 스위치(1) 온
+    gate_mask = transmission_coeff >= 0.5
+    output_bitmap = gate_mask.to(tl.uint32)
+    
+    # 최종 중계 매트릭스 레일(N x N 행렬 버스)에 정적 글로벌 Write-back 실행
+    output_offset = offs_m[:, None] * total_users + offs_n[None, :]
+    mask_matrix = mask_m[:, None] & mask_n[None, :]
+    
+    tl.store(broadcast_bitmap_ptr + output_offset, output_bitmap, mask=mask_matrix)
