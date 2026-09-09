@@ -1,0 +1,19 @@
+[package]
+name = "homeostasis-spatial-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# 비동기 지터 및 Starvation 박멸용 초고속 폴링 채널 런타임
+tokio = { version = "1.35", features = ["full"] }
+# 인프라 전역 헌법 구조체 매핑용 로더
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+# [★ 고도화 핵심 - 하드웨어 가속기 모듈의 독립 크레이트 패스 바인딩]
+# target_proxy_rust 내부 코드를 단 1줄도 오염시키지 않고, 
+# 독립형 하드웨어 모듈을 정적 패스 의존성 라이브러리로 하이재킹하여 결합합니다.
+spatial_viscosity = { path = "../target_hardware_cuda" }
+
+[build-dependencies]
+# 추가적인 build-dependencies 선언 없이 깔끔한 순수 의존성 트리 유지
