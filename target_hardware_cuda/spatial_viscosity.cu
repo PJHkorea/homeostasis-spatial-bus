@@ -1,17 +1,5 @@
 /*
  * Homeostasis Spatial Bus - High-Performance Gaming Infrastructure
- * File: target_hardware_cuda/spatial_viscosity.cu
- *
- * [수리물리학적 철학]
- * 본 GPU 가속 커널은 대규모 실시간 동기화 버스 하에서 데이터 이동 병목을 박멸합니다.
- * 호스트 커널이 수집한 32바이트 정렬 텐서를 GPU 레지스터 단으로 로드할 때 
- * 캐시라인 미스매치를 방지하고, __ldg() 가속 레이를 통해 L1 데이터 캐시를 우회 유도합니다.
- * 또한 티케팅/수강신청 등 정상 유저의 순간 밀집 현상에 의한 오탐을 차단하기 위해
- * 시간 축 유체 점성 감쇄 공식(Viscosity Damping)을 기계어 레벨에서 직접 집행합니다.
- */
-
-/*
- * Homeostasis Spatial Bus - High-Performance Gaming Infrastructure
  * File: target_hardware_cuda/spatial_viscosity.cu (1부 고도화 본)
  *
  * [수리물리학적 철학 - 하드웨어 가속 고도화 본]
