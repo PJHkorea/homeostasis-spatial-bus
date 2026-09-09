@@ -1,0 +1,29 @@
+# =========================================================================
+# Homeostasis Spatial Bus - Global Infrastructure Constitutional Matrix
+# File: config/spatial_bounds.toml
+# =========================================================================
+
+[infrastructure]
+# [★ 공간 복잡도 O(1) 정적 닫힌계 수호 장벽]
+# 2^23 + 2^21 등급 = 정확히 10,485,760 명 체글 하드라킹 고정
+max_spatial_users = 10485760
+
+# 전방 데이터 플레인 가속 관문 바인딩 포트 규격
+gaming_udp_port = 28000
+
+[mathematical_physics]
+# 3D 유클리드 공간 반경 임계 구속 한계선 (m 단위)
+world_radius_limit = 50000.0
+
+# 3차 왜도 및 유체 점성 감쇄 완충 상수 계수
+viscosity_alpha = 0.85
+
+# 제로 디비전 및 NaN 발산을 원천 거세하는 플랑크 완충 가드레일 상수
+hbar_effective = 1e-6
+
+[hardware_tuning]
+# NVIDIA 가속기 온칩 Shared Memory 뱅크 충돌 0%용 스트라이드 패딩 상수
+aligned_stride_padding = 129
+
+# 글로벌 메모리(HBM) Write 대역폭 75% 절감을 위한 다운캐스팅 압착 비트 크기 (int8 = 1)
+bandwidth_compression_mode = 1
