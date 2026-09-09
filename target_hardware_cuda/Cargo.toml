@@ -1,0 +1,13 @@
+[package]
+name = "spatial_viscosity"
+version = "0.1.0"
+edition = "2021"
+# build.rs 가 단독 가동될 수 있도록 빌드 스크립트 트리거 래칭 선언
+build = "build.rs"
+
+[dependencies]
+# 라이브러리 인터페이스 유지를 위한 미니멀 플랫 명세
+
+[lib]
+# Rust 프록시 데몬이 정적 라이브러리 형태로 FFI 링킹 주소선을 가져가도록 명시
+crate-type = ["staticlib"]
