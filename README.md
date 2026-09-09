@@ -28,28 +28,27 @@
 아무리 격렬한 대규모 한타 싸움이 벌어지고 오브젝트가 난사되어도, 이 시스템이 사용하는 메모리는 부팅 시점에 선점한 용량에서 닫힌계(Closed System)가 됩니다. 메모리 쓰레기 자체가 생성되지 않으므로 렉의 근본적인 원인이 물리적으로 소멸합니다.
 
 
----
-
 ## 📂 인프라 아키텍처 명세 (Directory Overview)
 
-* **config/spatial_bounds.toml**: 최대 유저 수(1050만 명), 맵 가드레일 크기 등 인프라의 헌법적 제약을 선포하는 통제실.
-* **core_formula/**: 3D 유클리드 좌표를 무한히 회전하는 도넛 공간(토러스 위상)에 가두어 수치 폭주를 원천 차단하고, 공분산 행렬식으로 난수 우회 매크로 봇을 저격하는 대수학 엔진.
-* **target_kernel_xdp/**: 랜선에서 전기로 인입되는 패킷을 낚아채 0ns 무복사 정류를 집행하고 if문을 거세한 C언어 커널 드라이버.
-* **target_hardware_cuda/**: GPU 온칩 SRAM 캐시 레이어와 OpenAI Triton 가속 커널을 활용해 10만 명의 주변 중계 비트맵을 전광석화처럼 펴내는 반도체 가속 레일.
-* **target_proxy_rust/**: 핫 패스를 방해하지 않고 유저의 아이템 교체 등 가변 상태를 단 1클록 만에 원자적으로 바꿔주는 락프리(Lock-Free) 오케스트레이터 사령탑.
-* **telemetry/**: 시스템 상태를 모니터링하기 위해 로그를 남기는 렉조차 아까워, GPU의 전력 소모 파형과 PCIe 대역폭의 미세 진동만을 역공학 추적하는 비침습식 관제 데몬.
+* **config/spatial_bounds.toml**: 최대 유저 수(1,048,5760명 물리 래치 고정), 플랑크 완충 상수, 가속기 스트라이드 패딩 등 전 영역의 수치해석적 오차가 없도록 인프라 전역의 통제
+* **core_formula/**: 3D 유클리드 좌표의 폭주를 막는 토러스 공간 위상 천이 변환(`space_morph.py`) 및 공분산 특이 행렬의 로그-행렬식 역산(`slogdet`) 가드로 봇넷의 선형 종속 위상 붕괴를 처리하는 대수학 코어 엔진(`csg_detector.py`).
+* **target_kernel_xdp/**: 32B 컴팩트 와이어 패킷 포맷을 하이재킹하여 64바이트 가속기 물리 슬롯 배열 맵으로 직접 정류하는 데이터 플레인 관문(`xdp_spatial_ingress.c`) 및 `volatile` 메모리 직접 가드로 `>> 63` 정수 산술 시프트 시간 장벽을 치는 커널 데이터 플레인(`bitwise_spatial_mux.c`).
+* **target_hardware_cuda/**: 독립 크레이트 구조(`Cargo.toml` / `build.rs`)로 완전 격리 패키징되어 GPU 온칩 SRAM 뱅크 충돌 0% 가속을 전개하는 유체 점성 감쇄 가속 커널(`spatial_viscosity.cu`) 및 `tl.int8` 스토어 압축으로 전역 Write 대역폭 75%를 소생시킨 OpenAI Triton 연산 레일(`spatial_filter.triton`).
+* **target_proxy_rust/**: `addr_of_mut!` 매크로와 `Ordering::SeqCst` 메모리 장벽 가드로 컴파일러 UB 최적화 왜곡을 박멸하고 단 1클록 만에 64B 슬롯 제어권을 교차 스왑하는 락프리 사령탑(`atomic_swapper.rs`) 및 128개 로그 일괄 드레인 기전으로 포화 유실을 분쇄한 관제 엔진(`ring_buffer_monitor.rs`).
+* **telemetry/**: 핫 패스 데이터에 0ns의 비간섭을 관철하는 대신, 가속기 연사 시 발생하는 GPU 물리 전력 미분 진폭(Power Gradient)과 절대 편차 에너지 가드레일을 역공학 추적하여 수치 락업 프리 무결성을 래칭하는 비침습 관제 데몬(`nvhw_power_monitor.py`).
 
 ---
+
 
 ## ⚙️ 인프라 환경 요구 조건 (Prerequisites)
 
 이 시스템을 에러와 지터(Jitter) 없이 14.88 Mpps 와이어 스피드로 구동하기 위한 최소 및 권장 하드웨어/소프트웨어 가드레일 명세입니다.
 
 ### 1. 리눅스 호스트 커널 (Linux Host Kernel) 스펙
-eBPF/XDP 레이어에서 32바이트 ABI 정렬 구조체와 640MB 고속 HBM 링버퍼(bpf_ringbuf) 주소선 하이재킹을 완벽하게 수행하기 위한 필수 커널 조건입니다.
+eBPF/XDP 레이어에서 **64바이트 ABI 정렬 구조체**와 **1.25 GB(1,280 MB) 고속 HBM 래티스 버퍼** 주소선 하이재킹을 완벽하게 수행하기 위한 필수 커널 조건입니다.
 
-* **최소 커널 버전**: Linux Kernel 5.15+ (기본 eBPF 링버퍼 인프라 안정화 버전)
-* **권장 커널 버전**: Linux Kernel 6.1+ LTS 이상 (XDP Native 다이렉트 드라이버 모드 및 부호 비트 >> 63 산술 시프트 기계어 최적화 완결 버전)
+* **최소 커널 버전**: Linux Kernel 5.15+ (기본 eBPF 인프라 안정화 버전)
+* **권장 커널 버전**: Linux Kernel 6.1+ LTS 이상 (XDP Native 다이렉트 드라이버 모드, `volatile` 메모리 가드 및 부호 비트 `>> 63` 산술 시프트 기계어 최적화 완결 버전)
 * **필수 커널 컴파일 옵션 (`.config`)**:
   * `CONFIG_BPF_SYSCALL=y` (eBPF 서브시스템 활성화)
   * `CONFIG_DEBUG_INFO_BTF=y` (vmlinux.h를 통한 컴파일 한 번으로 어디서나 실행 가능한 CO-RE 무결성 보장)
@@ -64,46 +63,57 @@ eBPF/XDP 레이어에서 32바이트 ABI 정렬 구조체와 640MB 고속 HBM �
 * **네트워크 모드**: `XDP_FLAGS_DRV_MODE` (Native Driver Mode) 필수 적용. (소프트웨어 에뮬레이션 모드인 SKB 모드는 복사 지터가 발생하므로 실전 투입 금지)
 
 ### 3. NVIDIA 가속 런타임 및 드라이버 (GPU 레일)
-32바이트 캐시라인 벡터화 로드(`__ldg`) 명령어를 기계어로 직접 구사하고, OpenAI Triton 커널 내에서 단일 클록 FMA 공간 필터링을 집행하기 위한 반도체 통제 스펙입니다.
+**64바이트 캐시라인 벡터화 로드(`__ldg`)** 명령어를 기계어로 직접 구사하고, OpenAI Triton 커널 내에서 단일 클록 FMA 공간 필터링 및 `tl.int8` 대역폭 압축을 집행하기 위한 반도체 통제 스펙입니다.
 
 * **NVIDIA 드라이버 버전**: NVIDIA Linux Driver 535.xx 이상 (안정적인 데이터 패스 스트라이드 패딩 제어 보장)
 * **CUDA 런타임 버전**: CUDA 12.0 ~ 12.4+ (Triton 가속 엔진과의 1:1 바이너리 인터록 정합성 수호)
-* **OpenAI Triton 컴파일러 버전**: `triton >= 2.1.0` (Warp-level 분기문 거세 기계어 합성 지원 버전)
+* **OpenAI Triton 컴파일러 버전**: `triton >= 2.1.0` (Warp-level 분기문 거세 및 SASS 기계어 합성 지원 버전)
 * **최소 하드웨어 아키텍처**: NVIDIA Ampere (RTX 30 시리즈 / A100 / T4) 또는 Ada Lovelace/Hopper (RTX 40 시리즈 / L4 / H100) 이상. (SRAM 32개 뱅크 충돌 0% 제어 알고리즘인 `ALIGNED_STRIDE 129` 연산이 하드웨어 레벨에서 작동하기 위한 필수 조건)
+
 
 
 ---
 
 ```directory
+## 📂 인프라 디렉토리 및 메모리 점유율 명세 (Directory & Memory Proof)
+
+### 1. 물리 메모리 점유율 명세 증명 (Mathematical Memory Verification)
+* **spatial_matrix_grid**: 64바이트 * 10,485,760 entries = 671,088,640 Bytes (**640 MB** 정적 선점)
+* **spatial_session_table**: 64바이트 * 10,485,760 entries = 671,088,640 Bytes (**640 MB** 정적 선점)
+* **총합 자원 점유율**: 640MB + 640MB = **정확히 1,280 MB (1.25 GB)** 공간 복잡도 \(O(1)\) 하드웨어 닫힌계.
+
+### 2. 프로젝트 트리 명세 Overview
+```text
 homeostasis-spatial-bus/
 ├── config/
-│   └── spatial_bounds.toml         # [핵심] 최대 유저수(1000만), 맵 크기, 틱레이트 하드 가드레일
+│   └── spatial_bounds.toml         # 최대 유저수(1050만), 맵 크기, 틱레이트 하드 가드레일 제약 관련
 ├── core_formula/
-│   ├── space_morph.py              # 3D 구면 좌표 -> 닫힌 토러스 공간 위상 천이 대수학 엔진
-│   └── csg_detector.py             # 공분산 행렬식(Det->0) 기반 매크로/어뷰징 좌표 동기화 저격 엔진
+│   ├── space_morph.py              # 3D 구면 좌표 -> 인플레이스 0-Copy 닫힌 토러스 공간 위상 천이 엔진
+│   └── csg_detector.py             # 공분산 로그-행렬식(slogdet) 기반 봇넷 동기화 위상 공간 붕괴 저격용 엔진
 ├── target_kernel_xdp/
-│   ├── Makefile                    # eBPF 바이트코드 컴파일 명세
-│   ├── bitwise_spatial_mux.c       # [트랙1] if문 없는 부호비트(>>63) 기반 광속 패킷 필터/뮤텍스 거세
-│   ├── xdp_spatial_ingress.c       # 랜카드 관문. UDP 좌표 패킷 낚아채서 32B 컴팩트 텐서 정류
-│   └── spatial_maps.h              # 640MB 정적 물리 메모리 래티스 그리드 매핑 정의 (HBM 선점)
+│   ├── Makefile                    # eBPF CO-RE 독립 컴파일 및 vmlinux.h 역적출 서브 메이크파일
+│   ├── bitwise_spatial_mux.c       # [트랙1] volatile 가드 기반 무분기 부호비트(>>63) 패킷 필터
+│   ├── xdp_spatial_ingress.c       # 32B 컴팩트 패킷 낚아채서 64B HBM 슬롯으로 volatile 직접 이식
+│   └── spatial_maps.h              # 1.25 GB 정적 물리 메모리 래티스 그리드 매핑 마스터 ABI 헤더
 ├── target_hardware_cuda/
-│   ├── build.rs                    # Rust-CUDA FFI 가속 컴파일 브릿지
-│   ├── spatial_viscosity.cu        # 32B 캐시라인 물리 경계 및 __ldg 벡터화 초고속 로드 제어
-│   └── spatial_filter.triton       # Triton 기반 1-Cycle FMA 가속 3D 충돌 판정 및 비트맵 브로드캐스트
+│   ├── Cargo.toml                  # 하드웨어 컴파일 파이프라인의 독립을 위한 전용 크레이트 명세
+│   ├── build.rs                    # --use_fast_math 및 sm_80/sm_90 SASS 기계어 추출 NVCC 독점 빌더
+│   ├── spatial_viscosity.cu        # 64B 캐시라인 물리 경계 수호 및 __ldg 캐시 하이재킹 점성 감쇄 커널
+│   └── spatial_filter.triton       # tl.int8 압축 스토어로 글로벌 대역폭 75% 소생시킨 1-Cycle FMA 충돌 커널
 ├── target_proxy_rust/
-│   ├── Cargo.toml
+│   ├── Cargo.toml                  # 독립 CUDA 크레이트(path = "../target_hardware_cuda") 하이재킹 바인딩
 │   ├── src/
-│   │   ├── main.rs                 # 전체 인프라 오케스트레이션 사령탑
-│   │   ├── atomic_swapper.rs       # [트랙2] 유저 액션/스킬 입력 시 0ns 락프리 원자적 포인터 스왑
-│   │   └── ring_buffer_monitor.rs  # 커널-GPU 간 0-Copy 순환 버퍼 텔레메트리 모니터링 데몬
+│   │   ├── main.rs                 # 1.25GB 대규모 할당 정밀 align(64) 제어 및 인프라 통제
+│   │   ├── atomic_swapper.rs       # [트랙2] addr_of_mut! 및 SeqCst 메모리 장벽 기반 원자적 포인터 스왑
+│   │   └── ring_buffer_monitor.rs  # 128개 로그 일괄 드레인 기전으로 포화 유실을 회피한 락프리 순환 버퍼 데몬
 ├── telemetry/
-│   └── nvhw_power_monitor.py      # 비침습식 모니터링: PCIe 대역폭 진동 및 GPU 전력 파형 역공학 관제
+│   └── nvhw_power_monitor.py       # 비침습식 모니터링: 절대 편차 에너지 가드로 Inf 락업을 제거한 GPU 파형 관제
 ├── tests/
-│   ├── mock_packet_injector.py     # 100Gbps급 가상 유저 10만 명 틱 데이터 생성기
-│   └── simulation_burst.py         # 실측 검증: 10만 명 난사 시 메모리 추가 할당 진폭 0B 증명 스크립트
-├── Dockerfile                      # NVIDIA CUDA 툴킷 및 커널 헤더 파편화 방지 격리 빌드 환경
-├── Makefile                        # 전체 이종 언어 소스코드 일괄 합성 및Native 모드 빌드 스크립트
-├── deploy.sh                       # Native XDP 드라이버 원터치 적재 및 언로드 자동화 스크립트
-└── README.md                       # 수리물리학적 닫힌계 게이밍 버스 아키텍처 선언문
-
+│   ├── mock_packet_injector.py     # np.frombuffer SIMD형 블록 카피로 파이썬 루프를 회피한 32B 와이어 패킷 생성기
+│   └── simulation_burst.py         # 다수의 요청 시 커널 VmRSS 변동량 64KB 이하(O(1))를 테스트
+├── Dockerfile             
+├── Makefile                        # 하위 eBPF/CUDA 모듈을 Recursive Make 통합 호출
+├── deploy.sh                       # ulimit -l 상한선 해제 및 Native xdpdrv 모드 원터치 인젝션/언로드 스크립트
+└── README.md
 ```
+
